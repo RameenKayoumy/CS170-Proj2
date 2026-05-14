@@ -275,11 +275,13 @@ void yieldImpl() {
     //See addrspace.cc and thread.cc on how to save and restore states.
     //END HINTS
     
-   
-  
- 
+    currentThread->SaveUserState();
+    currentThread->space->SaveState();
 
+    currentThread->Yield();
 
+    currentThread->RestoreUserState();
+    currentThread->space->RestoreState();
 }
 
 //----------------------------------------------------------------------
@@ -302,12 +304,14 @@ void exitImpl() {
     //END HINTS
 
     
-   
+    PCB* currPCB = currentThread->space->getPCB();
+    currPCB->status = status;
+    processManager->broadcast(currPID);
 
     //Delete the current space of this process
     delete currentThread->space;
     currentThread->space = NULL;
-    processManager->clearPID(currPID);
+    //processManager->clearPID(currPID); //handled in Process Manager
 
     (void) interrupt->SetLevel(oldLevel);
     currentThread->Finish();
@@ -329,11 +333,16 @@ int joinImpl() {
    // END HINTS
    //
     
-   
-  
+    // currentThread->SaveUserState();
+    // currentThread->space->SaveState();
+
+    processManager->join(otherPID);
+
+    currentThread->space->getPCB()->status = P_RUNNING;
  
-
-
+    // currentThread->RestoreUserState();
+    // currentThread->space->RestoreState();
+    
     return processManager->getStatus(otherPID);
 }
 
@@ -611,23 +620,31 @@ void writeImpl() {
 
 int readImpl() {
 
-    //int readAddr = machine->ReadRegister(4);
+    int readAddr = machine->ReadRegister(4);
     int size = machine->ReadRegister(5);
     int fileID = machine->ReadRegister(6);
     char* buffer = new char[size + 1];
     int numActualBytesRead = size;
 
+    int bytes = 0;
+    // if (fileID == ConsoleInput) {
+    //     int bytesRead = 0;
+    //     while (bytesRead < size) {
+    //         //buffer[bytesRead] = getchar();
+    //         buffer[bytesRead] = UserConsoleGetChar();
+    //         bytesRead++;
+    //     }
+    // }
     if (fileID == ConsoleInput) {
-        int bytesRead = 0;
-        while (bytesRead < size) {
-            //buffer[bytesRead] = getchar();
-            buffer[bytesRead] = UserConsoleGetChar();
-            bytesRead++;
+        while (bytes < size) {
+            buffer[bytes] = UserConsoleGetChar();
+            bytes++;
         }
     }
     else {
         UserOpenFile* userFile = currentThread->space->getPCB()->getFile(fileID);
         if (userFile == NULL) {
+            delete [] buffer;
             return 0;
         }
 
@@ -641,14 +658,14 @@ int readImpl() {
         // See sysopenfile.h and openfilemanager.cc for SysOpenFile class and its methods.
  
         SysOpenFile* currSysOpen = openFileManager->getFile(userFile->indexInSysOpenFileList);
-        int bytes = currSysOpen->file->ReadAt(buffer, size, userFile->currOffsetInFile);
+        bytes = currSysOpen->file->ReadAt(buffer, size, userFile->currOffsetInFile);
         userFile->currOffsetInFile += bytes;  
     }
     //BEGIN HINTS
     //Now copy data from the system buffer to the targted main memory space using userReadWrite()
     //END HINTS
 
-    numActualBytesRead = userReadWrite(readAddr, buffer, size, USER_READ);   
+    numActualBytesRead = userReadWrite(readAddr, buffer, bytes, USER_READ);   
 
     delete [] buffer;
     return numActualBytesRead;
@@ -675,7 +692,8 @@ void closeImpl() {
        
        SysOpenFile* currSysFile = openFileManager->getFile(userFile->indexInSysOpenFileList);
        currSysFile->closedBySingleProcess();
-       currentThread->space->getPCB()->removeFile(userFile->indexInSysOpenFileList);
+       //currentThread->space->getPCB()->removeFile(userFile->indexInSysOpenFileList);
+       currentThread->space->getPCB()->removeFile(fileID);
     }
 }
 
