@@ -508,7 +508,10 @@ int openImpl(char* filename) {
    // See useropenfile.h and pcb.cc on UserOpenFile class and its methods.
    // See sysopenfile.h and openfilemanager.cc for SysOpenFile class and its methods.
     
-  
+    currUserFile.fileName = filename;
+    currUserFile.indexInSysOpenFileList = index;
+    currUserFile.currOffsetInFile = 0;
+ 
  
     int currFileID = currentThread->space->getPCB()->addFile(currUserFile);
     return currFileID;
@@ -580,7 +583,8 @@ void writeImpl() {
        //Fetch data from the user space to this system buffer using  userReadWrite().
        //END HINTS
         
-        
+        userReadWrite(writeAddr, buffer, size, USER_WRITE);
+
         UserOpenFile* userFile = currentThread->space->getPCB()->getFile(fileID);
         if (userFile == NULL) {
          return;
@@ -592,10 +596,10 @@ void writeImpl() {
         //END HINTS 
        // See useropenfile.h and pcb.cc on UserOpenFile class and its methods.
        // See sysopenfile.h and openfilemanager.cc for SysOpenFile class and its methods.
-    
-
-
-    
+        
+        SysOpenFile* currSysOpen = openFileManager->getFile(userFile->indexInSysOpenFileList);
+        int numActualBytesWritten = currSysOpen->file->WriteAt(buffer, size, userFile->currOffsetInFile);
+        userFile->currOffsetInFile += numActualBytesWritten;
         
     }
     delete [] buffer;
@@ -636,16 +640,16 @@ int readImpl() {
         // See useropenfile.h and pcb.cc on UserOpenFile class and its methods.
         // See sysopenfile.h and openfilemanager.cc for SysOpenFile class and its methods.
  
-        
-       
-      
-     
-    
+        SysOpenFile* currSysOpen = openFileManager->getFile(userFile->indexInSysOpenFileList);
+        int bytes = currSysOpen->file->ReadAt(buffer, size, userFile->currOffsetInFile);
+        userFile->currOffsetInFile += bytes;  
     }
     //BEGIN HINTS
     //Now copy data from the system buffer to the targted main memory space using userReadWrite()
     //END HINTS
-    
+
+    numActualBytesRead = userReadWrite(readAddr, buffer, size, USER_READ);   
+
     delete [] buffer;
     return numActualBytesRead;
 }
@@ -668,11 +672,10 @@ void closeImpl() {
        // END HINTS
        // See useropenfile.h and pcb.cc on UserOpenFile class and its methods.
        // See sysopenfile.h and openfilemanager.cc for SysOpenFile class and its methods.
-
        
-        
-       
-      
+       SysOpenFile* currSysFile = openFileManager->getFile(userFile->indexInSysOpenFileList);
+       currSysFile->closedBySingleProcess();
+       currentThread->space->getPCB()->removeFile(userFile->indexInSysOpenFileList);
     }
 }
 
