@@ -274,12 +274,14 @@ void yieldImpl() {
     //and page table using AddrSpace::RestoreState()).
     //See addrspace.cc and thread.cc on how to save and restore states.
     //END HINTS
-    
+
+    // Save the process state so that we can restore it during a context switch
     currentThread->SaveUserState();
     currentThread->space->SaveState();
 
     currentThread->Yield();
 
+    // Restore the process's state once its running again
     currentThread->RestoreUserState();
     currentThread->space->RestoreState();
 }
@@ -305,7 +307,9 @@ void exitImpl() {
 
     
     PCB* currPCB = currentThread->space->getPCB();
+    // Set the status to exit
     currPCB->status = status;
+    // Notify all other processes through broadcast, rather than signal
     processManager->broadcast(currPID);
 
     //Delete the current space of this process
@@ -338,6 +342,7 @@ int joinImpl() {
 
     processManager->join(otherPID);
 
+    // Set the current process's status to running, since the other process is done
     currentThread->space->getPCB()->status = P_RUNNING;
  
     // currentThread->RestoreUserState();
@@ -516,8 +521,9 @@ int openImpl(char* filename) {
    // END HINTS
    // See useropenfile.h and pcb.cc on UserOpenFile class and its methods.
    // See sysopenfile.h and openfilemanager.cc for SysOpenFile class and its methods.
-    
+
     currUserFile.fileName = filename;
+    // Index is provided either way, we get an existing index or get the new one after adding it to the open file manager
     currUserFile.indexInSysOpenFileList = index;
     currUserFile.currOffsetInFile = 0;
  
@@ -591,7 +597,8 @@ void writeImpl() {
        //BEGIN HINTS
        //Fetch data from the user space to this system buffer using  userReadWrite().
        //END HINTS
-        
+
+        // Before writing to the file, put it inside a buffer
         userReadWrite(writeAddr, buffer, size, USER_WRITE);
 
         UserOpenFile* userFile = currentThread->space->getPCB()->getFile(fileID);
@@ -605,9 +612,12 @@ void writeImpl() {
         //END HINTS 
        // See useropenfile.h and pcb.cc on UserOpenFile class and its methods.
        // See sysopenfile.h and openfilemanager.cc for SysOpenFile class and its methods.
-        
+
+        // Get the system file using its index which is stored in the user file 
         SysOpenFile* currSysOpen = openFileManager->getFile(userFile->indexInSysOpenFileList);
+        // Write to the file using the buffer and record the number of bytes written here which is written to the actual file rather than just the buffer
         int numActualBytesWritten = currSysOpen->file->WriteAt(buffer, size, userFile->currOffsetInFile);
+        // Update the current file offset using the bytes written so that the next offset starts at the correct position
         userFile->currOffsetInFile += numActualBytesWritten;
         
     }
@@ -656,15 +666,19 @@ int readImpl() {
         // END HINTS 
         // See useropenfile.h and pcb.cc on UserOpenFile class and its methods.
         // See sysopenfile.h and openfilemanager.cc for SysOpenFile class and its methods.
- 
+
+        // Find the system file using its index as recorded in the user file
         SysOpenFile* currSysOpen = openFileManager->getFile(userFile->indexInSysOpenFileList);
+        // First use a buffer to read from the file before the process
         bytes = currSysOpen->file->ReadAt(buffer, size, userFile->currOffsetInFile);
+        // Update the offset by setting it to the number of bytes that the buffer succesfully read
         userFile->currOffsetInFile += bytes;  
     }
     //BEGIN HINTS
     //Now copy data from the system buffer to the targted main memory space using userReadWrite()
     //END HINTS
 
+    // Record the number of bytes read here, since we want to record the number of bytes read by process and not the buffer
     numActualBytesRead = userReadWrite(readAddr, buffer, bytes, USER_READ);   
 
     delete [] buffer;
@@ -689,10 +703,12 @@ void closeImpl() {
        // END HINTS
        // See useropenfile.h and pcb.cc on UserOpenFile class and its methods.
        // See sysopenfile.h and openfilemanager.cc for SysOpenFile class and its methods.
-       
+        
+        // Get the system file using its index file stored within the user file
        SysOpenFile* currSysFile = openFileManager->getFile(userFile->indexInSysOpenFileList);
+        // Multiple files could have the file opened, so decrement the number and only delete it once no processes have it opened
        currSysFile->closedBySingleProcess();
-       //currentThread->space->getPCB()->removeFile(userFile->indexInSysOpenFileList);
+        // Close the file within the process itself, identifying it using the file's ID
        currentThread->space->getPCB()->removeFile(fileID);
     }
 }
