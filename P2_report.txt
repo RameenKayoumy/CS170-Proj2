@@ -1,0 +1,57 @@
+Kiran Duriseti, Rameen Kayoumy, Matthew Ahmadpour
+
+WORKLOAD
+
+Kiran: Programmed join, yield, exit, and processmanager.cc file. Worked on final project testing and debugging.
+
+Rameen: Programmed and wrote all comments for Fork, Exec, and addrspace.cc file.
+
+Matthew: Programmed open, close, write, and read syscalls. Wrote the remaining code documentation and most of this report.
+
+We consider the work distribution to be fair, as each member contributed a roughly equal amount of time and effort writing and working on the content that appears in the final submission. Before working, all members drafted and agreed on a plan to distribute work evenly. Fork was more challenging to write than other syscalls, so the team agreed to have two members work on additional syscalls as their implementation was simpler. After finishing the remaining work, such as documentation and testing was split to make the previous distribution fairer. We consider it fair that one member worked on documentation for more complex syscalls, one for the report and documentation for simpler syscalls, and one for testing and debugging the final code. All members also reviewed (or edited) and approved this report.
+
+DESIGN EXPLANATION
+
+Halt()
+
+We kept the design the same as provided in the lab. 
+
+Fork()
+
+We create a brand new child process with its own address space, but copied from the parent by using the current (parent) thread’s space. We add multiple checks so that in case we are unable to fork or create a new valid space, we handle the error rather than continuing with it. We fork the child for the function using the argument register, then make the parent yield so that the child will run. 
+
+Exec()
+
+We kept the design similar to the one provided in the lab, implementing a change where we save the parents user state as the child process could run before the function is returned.  
+
+Yield()
+
+We perform a yield by saving the process state before allowing other processes to run, then restoring the state after the process is running again to perform a successful context switch.
+
+Exit()
+
+Before terminating the process by deleting its space, we notify all other processes of its exit status by using broadcast rather than signal. 
+
+Join()
+
+We use the process manager join function so that the process only runs again once the other process (which we identify using its process ID) is finished by waiting on its lock to be released. We use a while loop rather than an if statement in the function to handle spurious wakeups. 
+
+Create()
+
+We kept the design the same as provided in the lab. 
+
+Open()
+
+We create a UserOpenFile, initialize its values (name, index in system, file offset), and add it to the process’s file list. Before we open the file with the process, it is opened by another process or no processes until now. We can add it to the open file table or retrieve it, but we will still get an index, so we can write the same code after both. We also start at zero for this process entry, as we have not read or written anything yet.
+
+Write()
+
+We write the data from memory to the buffer, and then from the buffer to the system file since all other files should see the updated file. We increment the offset by the number of actual bytes written, so that on the next use, we start right at the position we stopped writing at. We get this value from the file and not the buffer as the positioning is specifically for the file.
+
+Read()
+
+We follow a similar procedure to write(), reading from the system file and writing it to memory. We return the number of bytes read from userReadWrite and not ReadAt since we want the number of actual bytes read, rather than just the buffer.
+
+Close()
+
+Within the process, we can use the process’s file ID to close the file. Since other processes could be pointing to the same system file, we decrement the number of files that have it opened. This deletes it only after no processes are pointing to it, rather than one.
